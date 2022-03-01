@@ -13,6 +13,7 @@
       "items": {
         "type": "string",
         "enum": [
+          "cons:debug",
           "cons:log",
           "cons:info",
           "cons:warn",
