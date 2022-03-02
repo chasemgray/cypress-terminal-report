@@ -5,7 +5,7 @@ module.exports = class LogCollectBaseControl {
     let logsCopy = this.collectorState.consumeLogStacks(logStackIndex);
 
     if (logsCopy === null) {
-      throw new CtrError(`Domain exception: log stack null.`);
+      return []
     }
 
     if (this.config.filterLog) {
