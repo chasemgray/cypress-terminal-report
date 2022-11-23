@@ -33,17 +33,17 @@ module.exports = class LogCollectExtendedControl extends LogCollectBaseControl {
     let testTitle = options.title || mochaRunnable.title;
     let testLevel = 0;
 
-    let invocationDetails = (mochaRunnable.parent.invocationDetails || mochaRunnable.invocationDetails);
-    let spec = invocationDetails.relativeFile || invocationDetails.fileUrl.replace(/^[^?]+\?p=/, '');
+    let spec = this.getSpecFilePath(mochaRunnable);
     let wait = typeof options.wait === 'number' ? options.wait : 6;
 
-    let parent = mochaRunnable.parent;
-    while (parent && parent.title) {
-      testTitle = `${parent.title} -> ${testTitle}`
-      parent = parent.parent;
-      ++testLevel;
+    {
+      let parent = mochaRunnable.parent;
+      while (parent && parent.title) {
+        testTitle = `${parent.title} -> ${testTitle}`
+        parent = parent.parent;
+        ++testLevel;
+      }
     }
-
 
     const prepareLogs = () => {
       return this.prepareLogs(logStackIndex, {mochaRunnable, testState, testTitle, testLevel});
@@ -64,6 +64,7 @@ module.exports = class LogCollectExtendedControl extends LogCollectBaseControl {
               level: testLevel,
               consoleTitle: options.consoleTitle,
               isHook: options.isHook,
+              continuous: false,
             }
           })
             // For some reason cypress throws empty error although the task indeed works.
@@ -84,6 +85,7 @@ module.exports = class LogCollectExtendedControl extends LogCollectBaseControl {
               level: testLevel,
               consoleTitle: options.consoleTitle,
               isHook: options.isHook,
+              continuous: false,
             },
             {log: false}
           );

@@ -1,6 +1,6 @@
 # Cypress terminal report [![Build Status](https://circleci.com/gh/archfz/cypress-terminal-report/tree/master.svg?style=svg)](https://app.circleci.com/pipelines/github/archfz/cypress-terminal-report) [![Downloads](https://badgen.net/npm/dw/cypress-terminal-report)](https://www.npmjs.com/package/cypress-terminal-report) [![Version](https://badgen.net/npm/v/cypress-terminal-report)](https://www.npmjs.com/package/cypress-terminal-report)
 
-> ! 3.x.x is out. Please read the [release notes](#300) for upgrade path from 2.x.x.
+> This documentation is for cypress >= 10.0.0. For older versions see [3.x.x branch](https://github.com/archfz/cypress-terminal-report/tree/3.x.x).
 
 <div align="center">
 
@@ -38,13 +38,14 @@ Try it out by cloning [cypress-terminal-report-demo](https://github.com/archfz/c
 - `console.log` usage was never meant to be used in the cypress test code. Using it will
   not log anything with this plugin. Using it also goes against the queue nature of 
   cypress. Use `cy.log` instead. [See here for more details](https://github.com/archfz/cypress-terminal-report/issues/67).
-- Using cypress-fail-fast and logging to files does not work out of the box. To enable support use 
+- Using `cypress-fail-fast` and logging to files does not work out of the box. To enable support use 
 the [`logToFilesOnAfterRun`](#optionslogtofilesonafterrun) option.
 
 ## Install
 
 ### Requirements
 
+- `>=4.0.0` requires cypress `>=10.0.0`
 - `>=3.0.0` requires cypress `>=4.10.0`
 - `<3.0.0` requires cypress `>=3.8.0`
 
@@ -52,13 +53,18 @@ the [`logToFilesOnAfterRun`](#optionslogtofilesonafterrun) option.
     ```bash
     npm i --save-dev cypress-terminal-report
     ```
-2. Register the output plugin in `cypress/plugins/index.js`
+2. If using typescript and es6 imports ensure `esModuleInterop` is enabled.
+3. Register the output plugin in `cypress.config.{js|ts}`
     ```js
-    module.exports = (on) => {
-       require('cypress-terminal-report/src/installLogsPrinter')(on);
-    };
+    module.exports = defineConfig({
+      e2e: {
+        setupNodeEvents(on, config) {
+          require('cypress-terminal-report/src/installLogsPrinter')(on);
+        }
+      }
+    });
     ```
-3. Register the log collector support in `cypress/support/index.js`
+4. Register the log collector support in `cypress/support/e2e.{js|ts}`
     ```js
     require('cypress-terminal-report/src/installLogsCollector')();
     ```
@@ -85,6 +91,12 @@ integer?; default: null; If it is set to a number greater or equal to 0, this am
 will be printed only around failing commands. Use this to have shorter output especially 
 for when there are a lot of commands in tests. When used with `options.printLogsToConsole=always` 
 for tests that don't have any `severity=error` logs nothing will be printed.
+
+#### `options.outputCompactLogs` 
+integer? | false; default: null; Overrides `options.compactLogs` for the file log output specifically, 
+when `options.outputTarget` is specified. Allows compacting of the terminal and the file output logs to different levels.  
+If `options.outputCompactLogs` is unspecified, file output will use `options.compactLogs`.
+If set to `false`, output file logs will not compact even if `options.compactLogs` is set.
 
 #### `options.outputRoot` 
 string; default: null; Required if `options.outputTarget` provided. [More details](#logging-to-files).
@@ -164,6 +176,15 @@ boolean; default false; Whether to print request data for XHR requests besides r
 boolean; default false; Enables an extended collector which will also collect command logs from
 before all and after all hooks.
 
+#### `options.enableContinuousLogging`
+boolean; default false; Enables logging logs to terminal continuously / immediately as they are registered.
+This feature is unstable and has an impact on pipeline performance. This option has no effect for extended 
+collector, only works for the simple collector. Use only for debugging purposes in case the pipelines / 
+tests are timing out. 
+
+> NOTE: In case of this option enabled, logs will come before the actual title of the test. Also the 
+> `printLogsToConsole` option will be ignored. Logging to files might also get impacted.
+
 #### _Example for options for the support install_
 
 ```js
@@ -199,7 +220,7 @@ To enable logging to file you must add the following configuration options to th
 plugin install.
 
 ```js
-module.exports = (on, config) => {
+setupNodeEvents(on, config) {
   // ...
   const options = {
     outputRoot: config.projectRoot + '/logs/',
@@ -211,7 +232,7 @@ module.exports = (on, config) => {
 
   require('cypress-terminal-report/src/installLogsPrinter')(on, options);
   // ...
-};
+}
 ```
 
 The `outputTarget` needs to be an object where the key is the relative path of the
@@ -228,19 +249,16 @@ is the file extension for the log files. The generated output will have the
 same structure as in the cypress specs root directory.
 
 ```js
-const path = require('path');
-
-module.exports = (on, config) => {
+setupNodeEvents(on, config) {
   const options = {
     outputRoot: config.projectRoot + '/logs/',
-    // Used to trim the base path of specs and reduce nesting in the
-    // generated output directory.
-    specRoot: path.relative(config.fileServerFolder, config.integrationFolder),
+    // Used to trim the base path of specs and reduce nesting in the generated output directory.
+    specRoot: 'cypress/e2e',
     outputTarget: {
       'cypress-logs|json': 'json',
     }
   };
-};
+}
 ```
 
 ### Custom output log processor
@@ -272,16 +290,23 @@ data in the output file.
   // ...
   const options = {
     outputTarget: {
-      'custom.output': function (messages) {
-        // messages= {[specPath: string]: {[testTitle: string]: [type: string, message: string, severity: string][]}
+      'custom.output': function (allMessages) {
+        // allMessages= {[specPath: string]: {[testTitle: string]: [type: string, message: string, severity: string][]}}
 
         Object.entries(allMessages).forEach(([spec, tests]) => {
-            let dataString = '';
-            // .. Process the tests object into desired format ..
-            // Insert chunk into file, by default at the end.
-            this.writeSpecChunk(spec, dataString);
-            // Or before the last two characters.
-            this.writeSpecChunk(spec, dataString, -2);
+          let text = `${spec}:\n`
+          Object.entries(tests).forEach(([test, messages]) => {
+            text += `    ${test}\n`
+            messages.forEach(([type, message, severity]) => {
+              text += `        ${type} (${severity}): ${message}\n`
+            })
+          })
+          
+          // .. Process the tests object into desired format ..
+          // Insert chunk into file, by default at the end.
+          this.writeSpecChunk(spec, text);
+          // Or before the last two characters.
+          this.writeSpecChunk(spec, text, -2);
         });
       }
     }
@@ -306,6 +331,59 @@ add the case as well in the `/test/test.js`. To run the tests you can use `npm t
 directory. You should add `it.only` to the test case you are working on to speed up development.
 
 ## Release Notes
+
+#### 4.1.2
+
+- Fix incorrectly required option props.
+- Fix missing option `logToFilesOnAfterRun` in types. [issue](https://github.com/archfz/cypress-terminal-report/issues/161)
+- Fix compatibility with `cypress-grep`. see [issue](https://github.com/archfz/cypress-terminal-report/issues/160)
+
+#### 4.1.1
+
+- Fix issue with `http` module causing `vite` issues. [issue](https://github.com/archfz/cypress-terminal-report/issues/154) by [wopian](https://github.com/wopian) 
+- Dependency updates. by [wopian](https://github.com/wopian)
+
+#### 4.1.0
+
+- Add experimental [`enableContinuousLogging`](#optionsenablecontinuouslogging) option for timeout debugging purposes. [issue](https://github.com/archfz/cypress-terminal-report/issues/150)
+
+#### 4.0.3
+
+- Fix issue with errors throw outside of tests overlapping real error. [issue](https://github.com/archfz/cypress-terminal-report/issues/152)
+- Add additional potential source for spec file path determination.
+- Update cypress in tests to 10.3.0 to confirm support.
+
+#### 4.0.2
+
+- Typescript typing fix to support both esm and commonjs require. [issue](https://github.com/archfz/cypress-terminal-report/issues/151)
+
+#### 4.0.1
+
+- Typescript typing fix and readme update. [issue](https://github.com/archfz/cypress-terminal-report/issues/148)
+
+#### 4.0.0
+
+- Add support for cypress ^10. [Follow cypress upgrade](https://deploy-preview-4186--cypress-docs.netlify.app/guides/references/migration-guide#Migrating-to-Cypress-version-10-0).
+- ! Breaking change: `specRoot` option cannot be calculated anymore using config, as 
+  `integrationFolder` option was removed in cypress. [This now has to be set manually](#log-specs-in-separate-files). 
+
+#### 3.5.2
+
+- Fix issue where top-level `.spec` files that call test functions in other files results in multiple output files being created.  by [bvandercar-vt](https://github.com/bvandercar-vt)
+- Security dependency updates.
+
+#### 3.5.1
+
+- Fix custom output processor example in README. by [bvandercar-vt](https://github.com/bvandercar-vt)
+- Add more exported types to facilitate creating custom output processors in TypeScript. by [bvandercar-vt](https://github.com/bvandercar-vt)
+- Security dependency updates.
+
+#### 3.5.0
+
+- Add new feature [`outputCompactLogs`](#optionsoutputcompactlogs) to allow for optionally overriding compactLogs for the output file specifically. by [bvandercar-vt](https://github.com/bvandercar-vt) [issue](https://github.com/archfz/cypress-terminal-report/issues/138)
+- Fix typing for `processLog`. [issue](https://github.com/archfz/cypress-terminal-report/issues/132)
+- Security dependency updates.
+- Update cypress to 9.5.x in tests to confirm support.
 
 #### 3.4.2
 

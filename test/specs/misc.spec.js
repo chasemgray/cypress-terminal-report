@@ -1,7 +1,7 @@
 import {
   ICONS,
   runTest,
-  commandBase, logLastRun, clean,
+  commandBase, logLastRun, clean, runTestContinuous,
 } from "../utils";
 
 const {expect} = require('chai');
@@ -60,6 +60,13 @@ describe('Misc.', () => {
     });
   }).timeout(30000);
 
+  it('Should not overlap error throw outside of spec.', async () => {
+    await runTest(commandBase([], ['errorsOutside2.spec.js']), (error, stdout, stderr) => {
+      expect(stdout).to.contain(`> Error thrown outside of describe.`);
+      expect(stdout).to.not.contain(`TypeError: Cannot read properties of undefined (reading 'replace')`);
+    });
+  }).timeout(30000);
+
   it('Should print logs for all cypress retries.', async () => {
     await runTest(commandBase(['breaking=1'], ['retries.spec.js']), (error, stdout, stderr) => {
       expect(stdout).to.contain(`(Attempt 1 of 3) fails
@@ -87,6 +94,28 @@ describe('Misc.', () => {
     ✓ Test 3
     ✓ Test 4`);
     });
+  }).timeout(60000);
+
+  it('Should continuously log.', async function () {
+    let checksMade = 0;
+    await runTestContinuous(
+      commandBase(['enableContinuousLogging=1'], ['continuousLogging.spec.js']),
+      'continuous logging',
+      (data, elapsedTime) => {
+        if (elapsedTime > 0.5 && elapsedTime <= 1) {
+          ++checksMade;
+          expect(clean(data)).to.contain(`cy:log ${ICONS.info}  log 1`);
+          expect(clean(data)).to.contain(`cy:log ${ICONS.info}  log 2`);
+          expect(clean(data)).to.not.contain(`cy:log ${ICONS.info}  log 3`);
+        }
+        if (elapsedTime > 2.6 && elapsedTime <= 3) {
+          ++checksMade;
+          expect(clean(data)).to.contain(`cy:log ${ICONS.info}  log again 1`);
+          expect(clean(data)).to.not.contain(`cy:log ${ICONS.info}  log again 2`);
+        }
+      });
+
+    expect(checksMade, "No checks where made. The process might have ended too early.").to.be.greaterThan(0)
   }).timeout(60000);
 
 });

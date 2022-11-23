@@ -27,15 +27,16 @@ module.exports = class LogCollectSimpleControl extends LogCollectBaseControl {
     let testTitle = options.title || mochaRunnable.title;
     let testLevel = 0;
 
-    let invocationDetails = (mochaRunnable.parent.invocationDetails || mochaRunnable.invocationDetails);
-    let spec = invocationDetails.relativeFile || invocationDetails.fileUrl.replace(/^[^?]+\?p=/, '');
+    let spec = this.getSpecFilePath(mochaRunnable);
     let wait = typeof options.wait === 'number' ? options.wait : 6;
 
-    let parent = mochaRunnable.parent;
-    while (parent && parent.title) {
-      testTitle = `${parent.title} -> ${testTitle}`
-      parent = parent.parent;
-      ++testLevel;
+    {
+      let parent = mochaRunnable.parent;
+      while (parent && parent.title) {
+        testTitle = `${parent.title} -> ${testTitle}`
+        parent = parent.parent;
+        ++testLevel;
+      }
     }
 
     const prepareLogs = () => {
@@ -54,6 +55,7 @@ module.exports = class LogCollectSimpleControl extends LogCollectBaseControl {
             level: testLevel,
             consoleTitle: options.consoleTitle,
             isHook: options.isHook,
+            continuous: this.config.enableContinuousLogging,
           }
         })
           // For some reason cypress throws empty error although the task indeed works.
@@ -73,6 +75,7 @@ module.exports = class LogCollectSimpleControl extends LogCollectBaseControl {
               level: testLevel,
               consoleTitle: options.consoleTitle,
               isHook: options.isHook,
+              continuous: this.config.enableContinuousLogging,
             },
             {log: false}
           );
@@ -100,18 +103,27 @@ module.exports = class LogCollectSimpleControl extends LogCollectBaseControl {
   registerTests() {
     const self = this;
 
+    if (this.config.enableContinuousLogging) {
+      this.collectorState.on('log', () => {
+        self.sendLogsToPrinter(self.collectorState.getCurrentLogStackIndex(), self.collectorState.getCurrentTest(), {noQueue: true});
+        this.collectorState.addNewLogStack();
+      });
+      return;
+    }
+
     afterEach(function () {
       self.sendLogsToPrinter(self.collectorState.getCurrentLogStackIndex(), self.collectorState.getCurrentTest());
     });
 
     // Logs commands if test was manually skipped.
-    Cypress.mocha.getRunner().on('pending', function (test) {
-      if (self.collectorState.getCurrentTest()) {
+    Cypress.mocha.getRunner().on('pending', function () {
+      let test = self.collectorState.getCurrentTest();
+      if (test && test.state === 'pending') {
         // In case of fully skipped tests we might not yet have a log stack.
         if (!self.collectorState.hasLogsCurrentStack()) {
           self.collectorState.addNewLogStack();
         }
-        self.sendLogsToPrinter(self.collectorState.getCurrentLogStackIndex(), self.collectorState.getCurrentTest(), {noQueue: true});
+        self.sendLogsToPrinter(self.collectorState.getCurrentLogStackIndex(), test, {noQueue: true});
       }
     });
   }

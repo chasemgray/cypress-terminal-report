@@ -1,10 +1,14 @@
 import './commands';
+import registerCypressGrep from "cypress-grep";
 
 const env = Cypress.env();
 let config = {};
 
 if (env.failFast == '1') {
   require("cypress-fail-fast");
+}
+if (env.cypressGrep == '1') {
+  registerCypressGrep();
 }
 
 if (env.ctrDebug == '1') {
@@ -83,6 +87,9 @@ if (env.supportGoodConfig == '1') {
 if (env.enableExtendedCollector == '1') {
   config.enableExtendedCollector = true;
 }
+if (env.enableContinuousLogging == '1') {
+  config.enableContinuousLogging = true;
+}
 
 require('../../../src/installLogsCollector')(config);
 
@@ -96,8 +103,6 @@ function enableFetchWorkaround() {
       polyfill = response.body;
     }, {log: false});
   });
-
-  console.log(Cypress);
 
   Cypress.on('window:before:load', win => {
     delete win.fetch;
